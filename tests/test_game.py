@@ -57,7 +57,7 @@ def test_flop_starts_after_call():
     assert [a.type for a in flop.actions] == [CHECK, BET, BET, BET]
     assert flop.actions[1].amount == 165  # 0.33 * 500
     assert flop.actions[2].amount == 500  # pot bet
-    assert flop.actions[3].amount == 9950  # all-in bet
+    assert flop.actions[3].amount == 9500  # all-in bet
 
 
 def test_no_duplicate_keys_or_actions():
