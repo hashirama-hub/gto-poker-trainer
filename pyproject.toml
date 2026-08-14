@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gto-trainer"
+version = "0.1.0"
+description = "GTO poker solver and training software for MTT (8-max)"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+gto-trainer = "gto.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["gto*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
