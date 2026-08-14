@@ -192,6 +192,75 @@ def evaluate_5(cards) -> int:
     return NONFLUSH[PRIMES[r0] * PRIMES[r1] * PRIMES[r2] * PRIMES[r3] * PRIMES[r4]]
 
 
+# ------------------------------------------------------------------ batched
+# Dense lookup tables for vectorized evaluation.
+STRENGTH5: "np.ndarray | None" = None      # index = rank0*13^4+...+rank4 (any order)
+FLUSH5: "np.ndarray | None" = None         # index = 13-bit rank mask
+_SUBSET_IDX: "np.ndarray | None" = None    # (21, 5) indices of 5-of-7 subsets
+
+
+def _build_dense():
+    """Lazily build dense 5-card tables + subset indices (once)."""
+    global STRENGTH5, FLUSH5, _SUBSET_IDX
+    import numpy as np
+    from itertools import combinations_with_replacement, permutations
+
+    if STRENGTH5 is not None:
+        return
+    s5 = np.zeros(13 ** 5, dtype=np.int16)
+    for combo in combinations_with_replacement(range(13), 5):
+        if max(_rank_counts(combo)) > 4:
+            continue  # 5-of-a-kind impossible in a real deck
+        p = 1
+        for r in combo:
+            p *= PRIMES[r]
+        val = NONFLUSH[p]
+        for perm in permutations(combo):
+            idx = 0
+            for r in perm:
+                idx = idx * 13 + r
+            s5[idx] = val
+    STRENGTH5 = s5
+    f5 = np.zeros(1 << 13, dtype=np.int16)
+    for mask, val in FLUSH.items():
+        f5[mask] = val
+    FLUSH5 = f5
+    _SUBSET_IDX = np.array(list(combinations(range(7), 5)), dtype=np.int16)
+
+
+def evaluate_7_batch(hand_cards, board_cards) -> "np.ndarray":
+    """Vectorized 7-card evaluation: (N, 2) hands vs one 5-card board -> (N,).
+
+    Hands that share a card with the board return 0.
+    """
+    import numpy as np
+
+    _build_dense()
+    hands = np.asarray(hand_cards, dtype=np.int16)
+    board = np.asarray(board_cards, dtype=np.int16)
+    n = hands.shape[0]
+    ranks = np.empty((n, 7), dtype=np.int16)
+    suits = np.empty((n, 7), dtype=np.int16)
+    ranks[:, :2] = hands // 4
+    ranks[:, 2:] = board // 4
+    suits[:, :2] = hands % 4
+    suits[:, 2:] = board % 4
+
+    r5 = ranks[:, _SUBSET_IDX]            # (n, 21, 5)
+    s5 = suits[:, _SUBSET_IDX]
+    idx = np.zeros((n, 21), dtype=np.int32)
+    mask = np.zeros((n, 21), dtype=np.int16)
+    for k in range(5):
+        idx = idx * 13 + r5[:, :, k]
+        mask |= 1 << r5[:, :, k]
+    is_flush = (s5 == s5[:, :, :1]).all(axis=2)
+    best = np.where(is_flush, FLUSH5[mask], STRENGTH5[idx]).max(axis=1)
+
+    dead = np.isin(hands, board).any(axis=1)
+    best[dead] = 0
+    return best.astype(np.int32)
+
+
 _CACHE: dict[tuple[int, ...], int] = {}
 
 

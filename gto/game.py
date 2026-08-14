@@ -25,6 +25,8 @@ class GameConfig:
     raise_sizes: dict[int, tuple[float, ...]] = field(
         default_factory=lambda: {0: (0.5, 1.0), 1: (1.0,), 2: (1.0,), 3: (1.0,)}
     )
+    # restricted tree: preflop only shove/fold (BB: call/fold) - MTT push/fold
+    push_fold: bool = False
 
     def raise_to(self, pot: int, to_call: int, last_bet: int, frac: float) -> int:
         """Raise-to amount: pot after call + frac * last bet."""
@@ -71,6 +73,7 @@ class Node:
     actions: list[Action] = field(default_factory=list)
     children: list[object] = field(default_factory=list)
     terminal: str | None = None
+    winner: int | None = None   # for fold terminals
     # solver state: per-player arrays indexed by action
     regrets: dict[int, object] = field(default_factory=dict)
     strat_sum: dict[int, object] = field(default_factory=dict)
@@ -102,6 +105,10 @@ def build_tree(
         if stack_p <= 0:
             # cannot act: fold is only possible if facing a bet
             node.terminal = TERMINAL_FOLD if to_call > 0 else TERMINAL_SHOWDOWN
+            if node.terminal == TERMINAL_FOLD:
+                node.winner = opp
+            else:
+                node.pot = node.pot + node.inv[0] + node.inv[1]
             return
 
         acts: list[Action] = []
@@ -136,10 +143,21 @@ def build_tree(
                 seen.add((a.type, a.amount))
                 uniq.append(a)
         node.actions = uniq
-        for a in uniq:
-            if a.type == FOLD:
-                node.children.append(Node((), 0, 0, (0, 0), 0, terminal=TERMINAL_FOLD))
-                continue
+
+        def _fold_child() -> None:
+            node.children.append(
+                Node(
+                    (),
+                    0,
+                    0,
+                    node.pot,
+                    node.inv,
+                    terminal=TERMINAL_FOLD,
+                    winner=1 - p,
+                )
+            )
+
+        def _child(a: Action) -> None:
             new_inv = list(node.inv)
             new_pot = node.pot
             if a.type == CHECK:
@@ -158,7 +176,16 @@ def build_tree(
 
             if new_inv[0] == new_inv[1]:
                 if node.street == 3:
-                    node.children.append(Node((), 0, 0, (0, 0), 0, terminal=TERMINAL_SHOWDOWN))
+                    node.children.append(
+                        Node(
+                            (),
+                            0,
+                            0,
+                            new_pot,
+                            new_inv,
+                            terminal=TERMINAL_SHOWDOWN,
+                        )
+                    )
                 else:
                     k = state_key(node.street + 1, new_pot, (0, 0), 0)
                     child = nodes.get(k)
@@ -173,6 +200,19 @@ def build_tree(
                     child = Node(k, node.street, opp, new_pot, new_inv)
                     nodes[k] = child
                 node.children.append(child)
+
+        if cfg.push_fold and node.street == 0 and node.to_act == 0:
+            # restricted tree: SB shoves or folds
+            node.actions = [Action(FOLD, 0), Action(RAISE, node.inv[p] + stack_p)]
+            _fold_child()
+            _child(node.actions[1])
+            return
+
+        for a in uniq:
+            if a.type == FOLD:
+                _fold_child()
+            else:
+                _child(a)
 
     if start_street == 0 and start_inv == (0, 0):
         start_inv = (cfg.sb, cfg.bb)
