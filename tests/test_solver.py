@@ -113,3 +113,18 @@ def test_full_tree_builds_and_solves():
     i_72 = COMBO_INDEX[(0, 28)]
     assert avg0[i_aa][1:].sum() > 0.9  # AA raises preflop
     assert avg0[i_72][0] > 0.5  # 72o folds
+
+
+def test_br_vec_shapes_full_tree():
+    """_br_vec returns per-action matrices at p's root and collapses at
+    opponent roots (no broadcasting errors on deep trees)."""
+    s = Solver(GameConfig(), SolverConfig(iterations=1))
+    dead = set()
+    h_opp = s._sample_opponent_hand(1, dead)
+    c1, c2 = COMBOS[h_opp]
+    dead.update([c1, c2])
+    board = s._sample_board(dead)
+    v0 = s._br_vec(s.nodes[s.root_key], 0, h_opp, board)
+    assert v0.shape == (len(s.nodes[s.root_key].actions), 1326)
+    v1 = s._br_vec(s.nodes[s.root_key], 1, h_opp, board)
+    assert v1.shape == (1326,)

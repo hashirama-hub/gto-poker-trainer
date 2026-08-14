@@ -327,7 +327,17 @@ class Solver:
         out = None
         for a, child in enumerate(node.children):
             v = self._br_vec(child, p, h_opp, board) * strat[a]
-            out = v if out is None else out + v
+            if out is None:
+                out = v
+                continue
+            try:
+                out = out + v
+            except ValueError:
+                # children lead to p-nodes with different action counts:
+                # collapse both to per-hand BR values and continue in 1-D
+                o = out if out.ndim == 1 else out.max(axis=0)
+                vv = v if v.ndim == 1 else v.max(axis=0)
+                out = o + vv
         return out
 
     def exploitability(self, trials: int = 25, boards_per_trial: int = 25) -> tuple[float, float]:
@@ -355,7 +365,10 @@ class Solver:
                     vals = self._br_vec(self.nodes[self.root_key], p, h_opp, board)
                     acc = vals if acc is None else acc + vals
                 valid = self._valid[p]
-                br[p] += (acc / boards_per_trial).max(axis=0)[valid].mean()
+                acc = acc / boards_per_trial
+                if acc.ndim > 1:  # p's node at root: max over p's actions
+                    acc = acc.max(axis=0)
+                br[p] += acc[valid].mean()
                 n[p] += 1
         return (br[0] / n[0] if n[0] else 0.0), (br[1] / n[1] if n[1] else 0.0)
 
