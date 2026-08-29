@@ -210,7 +210,7 @@ async def next_question(
     await session.commit()
     await session.refresh(quiz_hand)
     
-    return question_to_response(q, hand_num, quiz_session.hands_total, quiz_hand.id)
+    return question_to_response(q, hand_num, quiz_session.hands_total, quiz_hand.id, session_id)
 
 
 @router.get("/{session_id}/summary", response_model=QuizSummaryResponse)
