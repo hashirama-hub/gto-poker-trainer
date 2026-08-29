@@ -1,50 +1,37 @@
-"""Application configuration using Pydantic Settings."""
+"""Configuration settings."""
 from functools import lru_cache
-from pathlib import Path
-
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
+from typing import Optional
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
+    # App
+    APP_NAME: str = "GTO Trainer"
+    DEBUG: bool = True
+    API_V1_PREFIX: str = "/api/v1"
 
     # Database
-    database_url: str = Field(
-        default="postgresql://postgres:postgres@localhost/poker_trainer",
-        alias="DATABASE_URL",
-    )
+    DATABASE_URL: str = "postgresql+asyncpg://gto:gto_dev_password@localhost:5432/gto_trainer"
 
     # Redis
-    redis_url: str = Field(default="redis://localhost:6379/0", alias="REDIS_URL")
+    REDIS_URL: str = "redis://localhost:6379/0"
 
-    # JWT
-    jwt_secret_key: str = Field(alias="JWT_SECRET_KEY")
-    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
-    jwt_expire_minutes: int = Field(default=1440, alias="JWT_EXPIRE_MINUTES")
+    # Security
+    SECRET_KEY: str = "dev-secret-change-in-production"
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days
 
-    # API
-    api_host: str = Field(default="0.0.0.0", alias="API_HOST")
-    api_port: int = Field(default=8000, alias="API_PORT")
-    api_workers: int = Field(default=1, alias="API_WORKERS")
+    # CORS
+    BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     # Solver
-    solver_default_iterations: int = Field(default=25000, alias="SOLVER_DEFAULT_ITERATIONS")
-    solver_save_every: int = Field(default=10000, alias="SOLVER_SAVE_EVERY")
-    solver_report_every: int = Field(default=5000, alias="SOLVER_REPORT_EVERY")
+    SOLUTIONS_DIR: str = "/home/tuanlinh/poker/solutions"
 
-    # Paths
-    solutions_dir: Path = Field(default=Path("/home/tuanlinh/poker/solutions"), alias="SOLUTIONS_DIR")
-    model_cache_dir: Path = Field(default=Path("/home/tuanlinh/poker/.model_cache"), alias="MODEL_CACHE_DIR")
-
-    # Logging
-    log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    class Config:
+        env_file = ".env"
+        case_sensitive = True
 
 
-@lru_cache
+@lru_cache()
 def get_settings() -> Settings:
     return Settings()

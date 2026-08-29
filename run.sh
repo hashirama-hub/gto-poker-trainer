@@ -1,221 +1,136 @@
-#!/usr/bin/env bash
-# GTO Poker Trainer - Complete Launch Script
-# Usage: ./run.sh [command] [args...]
+#!/bin/bash
+# Parallel development runner for GTO Poker Trainer
+# Starts: PostgreSQL, Redis, Backend API, Frontend, Training Worker
 
-set -euo pipefail
+set -e
 
-PROJECT_ROOT="/home/tuanlinh/poker"
-VENV_PYTHON="$PROJECT_ROOT/.venv/bin/python"
-SOLUTIONS_DIR="$PROJECT_ROOT/solutions"
+cd /home/tuanlinh/poker
 
 # Colors
 GREEN='\033[0;32m'
+BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-log() { echo -e "${GREEN}[$(date '+%H:%M:%S')]${NC} $*"; }
-warn() { echo -e "${YELLOW}[$(date '+%H:%M:%S')]${NC} $*"; }
-err() { echo -e "${RED}[$(date '+%H:%M:%S')]${NC} $*" >&2; }
+echo -e "${GREEN}╔══════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║     GTO Poker Trainer - Parallel Development Runner      ║${NC}"
+echo -e "${GREEN}╚══════════════════════════════════════════════════════════╝${NC}"
 
-# Check venv exists
-if [[ ! -x "$VENV_PYTHON" ]]; then
-    err "Virtual environment not found at $VENV_PYTHON"
-    err "Run: python3 -m venv .venv && .venv/bin/pip install -e ."
-    exit 1
-fi
-
-# Ensure solutions dir exists
-mkdir -p "$SOLUTIONS_DIR"
-
-cd "$PROJECT_ROOT"
-
-# Commands
-cmd_train() {
-    local mode="${1:-pushfold}"
-    shift || true
-    log "Starting $mode quiz..."
-    exec "$VENV_PYTHON" -m gto.cli "$mode" "$@"
+# Kill existing processes on ports
+cleanup() {
+    echo -e "\n${YELLOW}Shutting down...${NC}"
+    pkill -f "uvicorn.*gto.api.main" 2>/dev/null || true
+    pkill -f "next dev" 2>/dev/null || true
+    pkill -f "gto.worker.main" 2>/dev/null || true
+    pkill -f "celery.*worker" 2>/dev/null || true
+    docker compose down 2>/dev/null || true
+    exit 0
 }
+trap cleanup INT TERM
 
-cmd_info() {
-    log "Querying GTO strategy..."
-    exec "$VENV_PYTHON" -m gto.cli info "$@"
-}
+# Start Docker services (PostgreSQL + Redis)
+echo -e "${BLUE}[1/5] Starting PostgreSQL & Redis...${NC}"
+docker compose up -d postgres redis 2>/dev/null || {
+    cat > docker-compose.yml << 'EOF'
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: gto_trainer
+      POSTGRES_USER: gto
+      POSTGRES_PASSWORD: gto_dev_password
+    ports: ["5432:5432"]
+    volumes: [postgres_data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gto"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-cmd_solve_pushfold() {
-    log "Solving push/fold models (10/15/20bb)..."
-    exec "$VENV_PYTHON" -m gto.cli solve-pushfold \
-        --depths 10 15 20 \
-        --iterations "${1:-60000}" \
-        --save-every "${2:-10000}" \
-        --report-every "${3:-5000}"
-}
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
-cmd_solve_full100() {
-    local iterations="${1:-25000}"
-    local save_every="${2:-10000}"
-    local report_every="${3:-5000}"
-    local model_path="${4:-$SOLUTIONS_DIR/full100_sb_bb_50k_checkpoint.pkl}"
-
-    log "Continuing full 100bb solve: $iterations iterations (save every $save_every)"
-    log "Model: $model_path"
-    log "Speed: ~86 it/s → ~${iterations} it ≈ $((iterations / 86 / 60)) minutes"
-    log "Press Ctrl+C to stop (checkpoint auto-saved)"
-
-    exec "$VENV_PYTHON" -m gto.cli solve-full100 \
-        --model "$model_path" \
-        --iterations "$iterations" \
-        --save-every "$save_every" \
-        --report-every "$report_every"
-}
-
-cmd_solve_full100_bg() {
-    local iterations="${1:-50000}"
-    local save_every="${2:-10000}"
-    local report_every="${3:-5000}"
-    local model_path="${4:-$SOLUTIONS_DIR/full100_sb_bb_50k_checkpoint.pkl}"
-    local log_file="$PROJECT_ROOT/solve_full100_$(date +%Y%m%d_%H%M%S).log"
-
-    log "Starting background solve: $iterations iterations"
-    log "Log: $log_file"
-    log "Check progress: tail -f $log_file"
-
-    nohup "$VENV_PYTHON" -u -m gto.cli solve-full100 \
-        --model "$model_path" \
-        --iterations "$iterations" \
-        --save-every "$save_every" \
-        --report-every "$report_every" \
-        > "$log_file" 2>&1 &
-
-    local pid=$!
-    echo $pid > "$PROJECT_ROOT/solve_full100.pid"
-    log "Started with PID: $pid"
-    log "Stop with: kill $pid"
-}
-
-cmd_stop_solve() {
-    local pid_file="$PROJECT_ROOT/solve_full100.pid"
-    if [[ -f "$pid_file" ]]; then
-        local pid=$(cat "$pid_file")
-        if kill "$pid" 2>/dev/null; then
-            log "Stopped solver (PID: $pid)"
-        else
-            warn "Process $pid not found"
-        fi
-        rm -f "$pid_file"
-    else
-        warn "No PID file found"
-    fi
-}
-
-cmd_test() {
-    log "Running test suite (46 tests)..."
-    exec "$VENV_PYTHON" -m pytest -q
-}
-
-cmd_status() {
-    log "=== GTO Poker Trainer Status ==="
-    echo
-    echo "Models in $SOLUTIONS_DIR:"
-    ls -lh "$SOLUTIONS_DIR"/*.pkl 2>/dev/null | awk '{print "  " $9 " (" $5 ")"}' || echo "  (none)"
-    echo
-    echo "Full 100bb model progress:"
-    if [[ -f "$SOLUTIONS_DIR/full100_sb_bb_50k_checkpoint.pkl" ]]; then
-        "$VENV_PYTHON" -c "
-import pickle
-with open('$SOLUTIONS_DIR/full100_sb_bb_50k_checkpoint.pkl', 'rb') as f:
-    data = pickle.load(f)
-total_regret = sum(abs(r0).sum() + abs(r1).sum() for r0, r1, _, _ in data.values())
-total_strat = sum(s0.sum() + s1.sum() for _, _, s0, s1 in data.values())
-print(f'  Nodes: {len(data)}')
-print(f'  Total regret mass: {total_regret:,.0f}')
-print(f'  Total strategy mass: {total_strat:,.0f}')
-"
-    else
-        echo "  Not found"
-    fi
-    echo
-    echo "Background solver:"
-    if [[ -f "$PROJECT_ROOT/solve_full100.pid" ]]; then
-        pid=$(cat "$PROJECT_ROOT/solve_full100.pid")
-        if kill -0 "$pid" 2>/dev/null; then
-            echo "  Running (PID: $pid)"
-        else
-            echo "  Dead (stale PID file)"
-        fi
-    else
-        echo "  Not running"
-    fi
-}
-
-cmd_help() {
-    cat <<EOF
-GTO Poker Trainer - Complete Launch Script
-
-Usage: ./run.sh <command> [args...]
-
-TRAINING QUIZZES:
-  ./run.sh train pushfold [--hands 10] [--bb 15] [--position sb|bb]
-  ./run.sh train icm [--hands 8] [--iterations 60000] [--position sb|bb] [--table "12,15,8,20,10,25,9,14"]
-  ./run.sh train preflop [--hands 10] [--position sb|bb]
-  ./run.sh train flop [--hands 5] [--fast] [--board "0,15,33"]
-
-LOOKUP GTO STRATEGY:
-  ./run.sh info "AA AKs 72o" [--depth 15]        # push/fold model
-  ./run.sh info "AA 72o"                         # full 100bb model
-
-SOLVING / TRAINING MODELS:
-  ./run.sh solve-pushfold [iterations] [save_every] [report_every]
-       Default: 60000 10000 5000
-
-  ./run.sh solve-full100 [iterations] [save_every] [report_every] [model_path]
-       Default: 25000 10000 5000 solutions/full100_sb_bb_50k_checkpoint.pkl
-       ~86 it/s on CPU. 300-500k iterations needed for convergence.
-
-  ./run.sh solve-full100-bg [iterations] [save_every] [report_every] [model_path]
-       Run in background, logs to timestamped file, PID saved.
-
-  ./run.sh stop-solve
-       Stop background solver (checkpoint auto-saved).
-
-UTILITIES:
-  ./run.sh test          # Run 46 tests
-  ./run.sh status        # Show model status & background solver
-  ./run.sh help          # This help
-
-EXAMPLES:
-  # Quick quiz
-  ./run.sh train pushfold --hands 20
-
-  # Full ICM final table quiz
-  ./run.sh train icm --hands 10 --iterations 60000
-
-  # Continue training full 100bb tree (foreground)
-  ./run.sh solve-full100 50000 10000 5000
-
-  # Continue training full 100bb tree (background)
-  ./run.sh solve-full100-bg 100000 10000 5000
-
-  # Check GTO play for specific hands
-  ./run.sh info "AA KK QQ AKs AQs" --depth 15
-  ./run.sh info "AA 72o A5s KQo"
-
-  # Run tests
-  ./run.sh test
+volumes:
+  postgres_data:
+  redis_data:
 EOF
+    docker compose up -d
 }
 
-# Main
-case "${1:-help}" in
-    train)     cmd_train "${@:2}" ;;
-    info)      cmd_info "${@:2}" ;;
-    solve-pushfold) cmd_solve_pushfold "${@:2}" ;;
-    solve-full100)  cmd_solve_full100 "${@:2}" ;;
-    solve-full100-bg) cmd_solve_full100_bg "${@:2}" ;;
-    stop-solve) cmd_stop_solve ;;
-    test)      cmd_test ;;
-    status)    cmd_status ;;
-    help|--help|-h) cmd_help ;;
-    *) err "Unknown command: $1"; cmd_help; exit 1 ;;
-esac
+# Wait for services
+echo -e "${BLUE}[2/5] Waiting for services...${NC}"
+until docker compose exec -T postgres pg_isready -U gto >/dev/null 2>&1; do sleep 1; done
+until docker compose exec -T redis redis-cli ping >/dev/null 2>&1; do sleep 1; done
+echo -e "${GREEN}✓ Services ready${NC}"
+
+# Setup database
+echo -e "${BLUE}[3/5] Setting up database...${NC}"
+.venv/bin/python -c "
+import asyncio
+from gto.db import init_db
+asyncio.run(init_db())
+print('Database initialized')
+" 2>/dev/null || echo "DB init skipped (may already exist)"
+
+# Activate venv
+source .venv/bin/activate
+export PYTHONPATH=/home/tuanlinh/poker:$PYTHONPATH
+export DATABASE_URL=postgresql+asyncpg://gto:gto_dev_password@localhost:5432/gto_trainer
+export REDIS_URL=redis://localhost:6379/0
+export SECRET_KEY=dev-secret-change-in-production
+export API_HOST=0.0.0.0
+export API_PORT=8000
+export FRONTEND_URL=http://localhost:3000
+
+# Start Backend API
+echo -e "${BLUE}[4/5] Starting Backend API (port 8000)...${NC}"
+.venv/bin/python -m uvicorn gto.api.main:app --host 0.0.0.0 --port 8000 --reload --reload-dir gto > logs/api.log 2>&1 &
+API_PID=$!
+sleep 3
+
+# Check API health
+for i in {1..10}; do
+    if curl -s http://localhost:8000/health >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ Backend API running on http://localhost:8000${NC}"
+        break
+    fi
+    sleep 1
+done
+
+# Start Celery Worker (for training jobs)
+echo -e "${BLUE}[5/5] Starting Training Worker...${NC}"
+.venv/bin/python -m celery -A gto.worker.celery_app worker --loglevel=info --concurrency=2 > logs/worker.log 2>&1 &
+WORKER_PID=$!
+sleep 2
+echo -e "${GREEN}✓ Training worker started${NC}"
+
+# Start Frontend
+echo -e "${BLUE}Starting Frontend (port 3000)...${NC}"
+cd frontend
+npm install --prefer-offline 2>/dev/null || npm install
+npm run dev > ../logs/frontend.log 2>&1 &
+FRONTEND_PID=$!
+cd ..
+
+echo -e "\n${GREEN}══════════════════════════════════════════════════════════${NC}"
+echo -e "${GREEN}All services running!${NC}"
+echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}"
+echo -e "  ${BLUE}Frontend:${NC}     http://localhost:3000"
+echo -e "  ${BLUE}Backend API:${NC}  http://localhost:8000"
+echo -e "  ${BLUE}API Docs:${NC}     http://localhost:8000/docs"
+echo -e "  ${BLUE}PostgreSQL:${NC}   localhost:5432"
+echo -e "  ${BLUE}Redis:${NC}        localhost:6379"
+echo -e "\n${YELLOW}Logs:${NC} tail -f logs/*.log"
+echo -e "${YELLOW}Stop:${NC}  Ctrl+C"
+echo -e "${GREEN}══════════════════════════════════════════════════════════${NC}\n"
+
+# Keep running
+wait $API_PID $WORKER_PID $FRONTEND_PID
