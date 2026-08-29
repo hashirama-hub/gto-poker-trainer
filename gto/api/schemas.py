@@ -54,6 +54,7 @@ class QuizStartRequest(BaseModel):
 class QuizHandResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+    session_id: UUID
     hand_number: int
     hero_position: int
     hand_name: str

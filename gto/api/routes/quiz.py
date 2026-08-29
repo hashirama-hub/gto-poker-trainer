@@ -36,7 +36,7 @@ from gto.trainer.models import flop_subgame, full100_model, icm_pushfold, pushfo
 router = APIRouter(tags=["quiz"])
 
 
-def question_to_response(q: Question, hand_number: int, total: int, hand_id: UUID = None) -> QuizHandResponse:
+def question_to_response(q: Question, hand_number: int, total: int, hand_id: UUID = None, session_id: UUID = None) -> QuizHandResponse:
     actions = [
         QuizAction(
             label=label,
@@ -47,6 +47,7 @@ def question_to_response(q: Question, hand_number: int, total: int, hand_id: UUI
     ]
     return QuizHandResponse(
         id=hand_id or UUID(int=0),
+        session_id=session_id or UUID(int=0),
         hand_number=hand_number,
         hero_position=q.player,
         hand_name=q.hand,
@@ -119,7 +120,7 @@ async def start_quiz(
     await session.commit()
     await session.refresh(quiz_hand)
     
-    return question_to_response(q, 1, request.hands, quiz_hand.id)
+    return question_to_response(q, 1, request.hands, quiz_hand.id, quiz_session.id)
 
 
 @router.post("/{session_id}/submit", response_model=QuizResultResponse)
