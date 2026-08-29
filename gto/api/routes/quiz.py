@@ -60,8 +60,22 @@ async def start_quiz(
     request: QuizStartRequest,
     session: AsyncSession = Depends(get_session),
 ):
+    # Create or get anonymous user
+    anon_id = UUID("00000000-0000-0000-0000-000000000000")
+    result = await session.execute(select(User).where(User.id == anon_id))
+    anon_user = result.scalar_one_or_none()
+    if not anon_user:
+        anon_user = User(
+            id=anon_id,
+            username="anonymous",
+            email=None,
+            hashed_password="",
+        )
+        session.add(anon_user)
+        await session.flush()
+    
     quiz_session = QuizSession(
-        user_id=UUID("00000000-0000-0000-0000-000000000000"),
+        user_id=anon_id,
         mode=request.mode,
         hands_total=request.hands,
         hands_answered=0,
