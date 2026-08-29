@@ -115,6 +115,7 @@ echo -e "${GREEN}✓ Training worker started${NC}"
 # Start Frontend
 echo -e "${BLUE}Starting Frontend (port 3000)...${NC}"
 cd frontend
+export PATH=/tmp/node-v20.15.0-linux-x64/bin:$PATH
 npm install --prefer-offline 2>/dev/null || npm install
 npm run dev > ../logs/frontend.log 2>&1 &
 FRONTEND_PID=$!
