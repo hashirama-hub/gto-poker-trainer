@@ -51,7 +51,7 @@
 
 @layer base {
   * {
-    @apply border-border;
+    border-color: hsl(var(--border));
   }
   body {
     @apply bg-dark-50 text-dark-900 dark:bg-dark-950 dark:text-dark-50;
