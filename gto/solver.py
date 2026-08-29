@@ -222,33 +222,38 @@ class Solver:
         return out
 
     def _terminal_icm(self, node, p: int, h_opp: int, board: tuple) -> np.ndarray:
-        """ICM payoffs: value over all hero hands (caller provides payoff fn)."""
+        """ICM payoffs: value over all hero hands (caller provides payoff fn).
+
+        The payoff only depends on the outcome (win/lose/split), so it is
+        evaluated 3 times and the vector is built with np.where (the per-combo
+        loop was ~1000x slower).
+        """
         fn = self.scfg.payoff
-        out = np.zeros(NUM_COMBOS)
         s_opp = self.strengths(board)[h_opp]
         s_hero = self.strengths(board)
         pot = node.pot
         if node.terminal == TERMINAL_FOLD:
-            winner = node.winner
             return np.full(
-                NUM_COMBOS, fn(p, pot, winner == 0, winner == 1, node, self.cfg)
+                NUM_COMBOS, fn(p, pot, node.winner == 0, node.winner == 1, node, self.cfg)
             )
-        for i in range(NUM_COMBOS):
-            if s_hero[i] <= 0:
-                continue  # hero hand shares a board card -> impossible
-            if s_hero[i] > s_opp:
-                out[i] = fn(p, pot, True, False, node, self.cfg)
-            elif s_hero[i] == s_opp:
-                out[i] = fn(p, pot, False, False, node, self.cfg)
-            else:
-                out[i] = fn(p, pot, False, True, node, self.cfg)
-        # re-weight for boards avoiding hero's cards (same constant as showdown)
+        v_win = fn(p, pot, True, False, node, self.cfg)
+        v_lose = fn(p, pot, False, True, node, self.cfg)
+        v_split = fn(p, pot, False, False, node, self.cfg)
+        out = np.where(
+            s_hero > s_opp,
+            v_win,
+            np.where(s_hero == s_opp, v_split, v_lose),
+        )
+        valid = s_hero > 0
+        if valid.all():
+            return out.astype(np.float64)
+        out = out.astype(np.float64)
+        out[~valid] = 0.0
         d = 52 - len(self.board0) - 2
         t = 5 - len(self.board0)
         p_avoid = (d - 2) / d
         for k in range(1, t):
             p_avoid *= (d - 2 - k) / (d - k)
-        valid = s_hero > 0
         out[valid] /= p_avoid
         return out
 
@@ -284,6 +289,89 @@ class Solver:
         )
 
     # ---------------------------------------------------------------- queries
+
+    def _avg_vec(self, node, p: int, h_opp: int, board: tuple) -> np.ndarray:
+        """Value vector over p's hands at a node, playing avg strategies."""
+        if node.terminal is not None:
+            return self._terminal_vec(node, p, h_opp, board)
+        if node.to_act == p:
+            vals = np.stack([self._avg_vec(c, p, h_opp, board) for c in node.children])
+            return (self.avg_strategy(node, p) * vals.T).sum(axis=1)
+        strat = self.avg_strategy(node, node.to_act)[h_opp]
+        out = np.zeros(NUM_COMBOS)
+        for a, c in enumerate(node.children):
+            out += strat[a] * self._avg_vec(c, p, h_opp, board)
+        return out
+
+    def _actions_at(self, key: tuple, p: int, h_opp: int, board: tuple) -> np.ndarray:
+        """Per-action value vectors (n_actions, NUM_COMBOS) at node `key`.
+
+        Traverses from the root with avg strategies; at the target node it
+        returns the values of every action for all of p's hands.
+        """
+
+        def rec(node):
+            if node.key == key:
+                return np.stack([self._avg_vec(c, p, h_opp, board) for c in node.children])
+            if node.terminal is not None:
+                return self._terminal_vec(node, p, h_opp, board)[None, :]
+            if node.to_act == p:
+                vals = np.stack([rec(c) for c in node.children])
+                strat = self.avg_strategy(node, p)
+                return (strat * vals.T).sum(axis=1, keepdims=True).T
+            strat = self.avg_strategy(node, node.to_act)[h_opp]
+            out = None
+            for a, c in enumerate(node.children):
+                v = rec(c) * strat[a]
+                if out is None:
+                    out = v
+                    continue
+                try:
+                    out = out + v
+                except ValueError:
+                    o = out if out.ndim == 1 else out.max(axis=0)
+                    vv = v if v.ndim == 1 else v.max(axis=0)
+                    out = o + vv
+            return out
+
+        return rec(self.nodes[self.root_key])
+
+    def ev_actions(
+        self, key: tuple, player: int, hand_name: str, samples: int = 300, seed: int = 7
+    ) -> dict[str, float]:
+        """Monte-Carlo EV (bb) of every action at node `key` for one hand.
+
+        Averages over sampled opponent hands and runouts, playing avg
+        strategies everywhere else. `hand_name` is GTO Wizard notation
+        ('AKs', '72o', '22').
+        """
+        from .ranges import COMBO_INDEX, _base_combo, _combo_cards
+
+        node = self.nodes[key]
+        combos = _combo_cards(*_base_combo(hand_name.upper()))
+        idx = [COMBO_INDEX.get(c) for c in combos]
+        idx = [i for i in idx if i is not None]
+        if not idx:
+            return {}
+        rng = random.Random(seed)
+        opp = 1 - player
+        acc = np.zeros((len(node.actions), NUM_COMBOS))
+        cnt = 0
+        for _ in range(samples):
+            dead = set(self.board0)
+            h_opp = self._sample_opponent_hand(opp, dead)
+            if h_opp is None:
+                continue
+            c1, c2 = COMBOS[h_opp]
+            dead.add(c1)
+            dead.add(c2)
+            board = self._sample_board(dead)
+            vals = self._actions_at(key, player, h_opp, board)
+            acc += vals
+            cnt += 1
+        mean = acc / max(cnt, 1)
+        ev = mean[:, idx].mean(axis=1) / self.cfg.bb
+        return {str(a): float(v) for a, v in zip(node.actions, ev)}
 
     def strategy_for_hand(self, key: tuple, player: int, hand_name: str) -> dict[str, float]:
         """Probabilities per action for a named hand (e.g. 'AKs', 'AA')."""
@@ -375,7 +463,9 @@ class Solver:
     # ------------------------------------------------------------------ I/O
 
     def save(self, path: str):
+        import os
         import pickle
+        import tempfile
 
         data = {}
         for key, node in self.nodes.items():
@@ -385,8 +475,17 @@ class Solver:
                 node.strat_sum[0],
                 node.strat_sum[1],
             )
-        with open(path, "wb") as f:
-            pickle.dump(data, f)
+        # atomic write: dump to a temp file, then rename (never corrupt a
+        # checkpoint that a concurrent reader may load)
+        d = os.path.dirname(os.path.abspath(path))
+        fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as f:
+                pickle.dump(data, f)
+            os.replace(tmp, path)
+        except BaseException:
+            os.unlink(tmp)
+            raise
 
     def load(self, path: str):
         import pickle
