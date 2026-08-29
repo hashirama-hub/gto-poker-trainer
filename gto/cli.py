@@ -168,13 +168,15 @@ def _cmd_info(args) -> None:
     if depth:
         s = pushfold_model(depth)
         eff = s.cfg.stack // BB
+        samples = 400
     else:
         s = full100_model(args.model)
         eff = 100
+        samples = 30
     key = s.root_key
     for hand in args.hands.split():
         strat = s.strategy_for_hand(key, 0, hand.upper())
-        ev = s.ev_actions(key, 0, hand.upper(), samples=400)
+        ev = s.ev_actions(key, 0, hand.upper(), samples=samples)
         print(f"{hand.upper()} @ {eff}bb, SB:")
         for label in ev:
             print(f"  {label:<16} GTO {strat.get(label, 0) * 100:5.1f}%   EV {ev[label]:+.2f}bb")

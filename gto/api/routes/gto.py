@@ -45,7 +45,8 @@ async def get_gto_info(
     
     for hand in request.hands:
         strat = solver.strategy_for_hand(key, 0, hand.upper())
-        ev = solver.ev_actions(key, 0, hand.upper(), samples=400)
+        samples = 400 if request.depth else 30
+        ev = solver.ev_actions(key, 0, hand.upper(), samples=samples)
         
         actions = [
             GTOActionInfo(
