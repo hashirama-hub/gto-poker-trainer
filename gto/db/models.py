@@ -35,6 +35,42 @@ class TrainingStatus(str, enum.Enum):
     PAUSED = "paused"
 
 
+class TournamentStatus(str, enum.Enum):
+    REGISTERING = "registering"
+    RUNNING = "running"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class TableStatus(str, enum.Enum):
+    WAITING = "waiting"
+    PLAYING = "playing"
+    HAND_IN_PROGRESS = "hand_in_progress"
+    BALANCING = "balancing"
+    CLOSED = "closed"
+
+
+class Street(str, enum.Enum):
+    PREFLOP = "preflop"
+    FLOP = "flop"
+    TURN = "turn"
+    RIVER = "river"
+    SHOWDOWN = "showdown"
+
+
+class ActionType(str, enum.Enum):
+    FOLD = "fold"
+    CHECK = "check"
+    CALL = "call"
+    BET = "bet"
+    RAISE = "raise"
+    ALL_IN = "all_in"
+    POST_SB = "post_sb"
+    POST_BB = "post_bb"
+    POST_ANTE = "post_ante"
+
+
 class User(Base):
     __tablename__ = "users"
 
