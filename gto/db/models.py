@@ -210,3 +210,160 @@ class HandHistory(Base):
         Index("ix_hand_history_user_played", "user_id", "played_at"),
         UniqueConstraint("tournament_id", "hand_number", name="uq_tournament_hand"),
     )
+
+
+class Tournament(Base):
+    __tablename__ = "tournaments"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[TournamentStatus] = mapped_column(Enum(TournamentStatus), default=TournamentStatus.REGISTERING, index=True)
+    max_players: Mapped[int] = mapped_column(Integer, default=90)
+    players_per_table: Mapped[int] = mapped_column(Integer, default=9)
+    starting_stack: Mapped[int] = mapped_column(Integer, default=10000)  # in chips
+    level_duration_minutes: Mapped[int] = mapped_column(Integer, default=10)
+    current_level: Mapped[int] = mapped_column(Integer, default=0)
+    small_blind: Mapped[int] = mapped_column(Integer, default=50)
+    big_blind: Mapped[int] = mapped_column(Integer, default=100)
+    ante: Mapped[int] = mapped_column(Integer, default=0)
+    payout_structure: Mapped[list[float]] = mapped_column(JSON, nullable=False, default=[])  # percentages
+    total_prize_pool: Mapped[int] = mapped_column(Integer, default=0)
+    buy_in: Mapped[int] = mapped_column(Integer, default=0)
+    rake: Mapped[int] = mapped_column(Integer, default=0)
+    real_time_mode: Mapped[bool] = mapped_column(default=True)  # False = turn-based
+    action_timer_seconds: Mapped[int] = mapped_column(Integer, default=30)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    config: Mapped[dict] = mapped_column(JSON, nullable=False, default={})
+
+    tables: Mapped[list["Table"]] = relationship(back_populates="tournament", cascade="all, delete-orphan")
+    players: Mapped[list["TournamentPlayer"]] = relationship(back_populates="tournament", cascade="all, delete-orphan")
+
+
+class Table(Base):
+    __tablename__ = "tables"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    tournament_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tournaments.id"), nullable=False, index=True)
+    table_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[TableStatus] = mapped_column(Enum(TableStatus), default=TableStatus.WAITING, index=True)
+    max_seats: Mapped[int] = mapped_column(Integer, default=9)
+    button_seat: Mapped[int] = mapped_column(Integer, default=0)
+    current_hand_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    hand_number: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    tournament: Mapped["Tournament"] = relationship(back_populates="tables")
+    seats: Mapped[list["TableSeat"]] = relationship(back_populates="table", cascade="all, delete-orphan")
+    hands: Mapped[list["TableHand"]] = relationship(back_populates="table", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint("tournament_id", "table_number", name="uq_tournament_table"),)
+
+
+class TableSeat(Base):
+    __tablename__ = "table_seats"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    table_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tables.id"), nullable=False, index=True)
+    seat_number: Mapped[int] = mapped_column(Integer, nullable=False)  # 0-8 for 9-max
+    player_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tournament_players.id"), nullable=True, index=True)
+    stack: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    is_sitting_out: Mapped[bool] = mapped_column(default=False)
+    position: Mapped[str | None] = mapped_column(String(10), nullable=True)  # BTN, SB, BB, UTG, etc.
+    last_action: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    last_action_amount: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    acted_this_street: Mapped[bool] = mapped_column(default=False)
+    is_all_in: Mapped[bool] = mapped_column(default=False)
+    hole_cards: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)  # card indices 0-51
+    current_bet: Mapped[int] = mapped_column(Integer, default=0)
+    total_bet_this_hand: Mapped[int] = mapped_column(Integer, default=0)
+
+    table: Mapped["Table"] = relationship(back_populates="seats")
+    player: Mapped["TournamentPlayer | None"] = relationship()
+
+    __table_args__ = (UniqueConstraint("table_id", "seat_number", name="uq_table_seat"),)
+
+
+class TournamentPlayer(Base):
+    __tablename__ = "tournament_players"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    tournament_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tournaments.id"), nullable=False, index=True)
+    user_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    username: Mapped[str] = mapped_column(String(50), nullable=False)
+    is_bot: Mapped[bool] = mapped_column(default=False)
+    bot_difficulty: Mapped[str | None] = mapped_column(String(20), nullable=True)  # "gto", "exploitative", etc.
+    starting_stack: Mapped[int] = mapped_column(Integer, default=10000)
+    current_stack: Mapped[int] = mapped_column(Integer, default=10000)
+    total_winnings: Mapped[int] = mapped_column(Integer, default=0)
+    finish_position: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    prize_won: Mapped[int] = mapped_column(Integer, default=0)
+    is_eliminated: Mapped[bool] = mapped_column(default=False)
+    eliminated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    eliminated_hand: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    registered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    seated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    current_table_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tables.id"), nullable=True)
+    current_seat_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("table_seats.id"), nullable=True)
+
+    tournament: Mapped["Tournament"] = relationship(back_populates="players")
+    user: Mapped["User | None"] = relationship()
+    current_table: Mapped["Table | None"] = relationship()
+    current_seat: Mapped["TableSeat | None"] = relationship()
+
+
+class TableHand(Base):
+    __tablename__ = "table_hands"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    table_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tables.id"), nullable=False, index=True)
+    hand_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    tournament_level: Mapped[int] = mapped_column(Integer, nullable=False)
+    small_blind: Mapped[int] = mapped_column(Integer, nullable=False)
+    big_blind: Mapped[int] = mapped_column(Integer, nullable=False)
+    ante: Mapped[int] = mapped_column(Integer, default=0)
+    button_seat: Mapped[int] = mapped_column(Integer, nullable=False)
+    sb_seat: Mapped[int] = mapped_column(Integer, nullable=False)
+    bb_seat: Mapped[int] = mapped_column(Integer, nullable=False)
+    board: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=[])
+    pot: Mapped[int] = mapped_column(Integer, default=0)
+    street: Mapped[Street] = mapped_column(Enum(Street), default=Street.PREFLOP)
+    current_bet: Mapped[int] = mapped_column(Integer, default=0)
+    min_raise: Mapped[int] = mapped_column(Integer, default=0)
+    last_raiser_seat: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_aggressor_seat: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    seats_in_hand: Mapped[list[int]] = mapped_column(JSON, nullable=False, default=[])
+    active_seat: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    winner_seats: Mapped[list[int]] = mapped_column(JSON, nullable=True)
+    win_amounts: Mapped[list[int]] = mapped_column(JSON, nullable=True)
+    hand_type: Mapped[str | None] = mapped_column(String(50), nullable=True)  # for showdown
+    gto_analysis: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # EV analysis per seat
+
+    table: Mapped["Table"] = relationship(back_populates="hands")
+    actions: Mapped[list["HandAction"]] = relationship(back_populates="hand", cascade="all, delete-orphan")
+
+    __table_args__ = (UniqueConstraint("table_id", "hand_number", name="uq_table_hand"),)
+
+
+class HandAction(Base):
+    __tablename__ = "hand_actions"
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    hand_id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("table_hands.id"), nullable=False, index=True)
+    seat_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    street: Mapped[Street] = mapped_column(Enum(Street), nullable=False)
+    action_type: Mapped[ActionType] = mapped_column(Enum(ActionType), nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, default=0)
+    pot_after: Mapped[int] = mapped_column(Integer, default=0)
+    stack_after: Mapped[int] = mapped_column(Integer, default=0)
+    is_gto_action: Mapped[bool] = mapped_column(default=False)
+    gto_ev_bb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    action_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    hand: Mapped["TableHand"] = relationship(back_populates="actions")
