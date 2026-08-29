@@ -1,6 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { ActionButton } from '@/components/ui/ActionButton';
 import { HandMatrix } from '@/components/ui/HandMatrix';
 import { cn, formatHand, handToDisplay, scoreToColor, verdictToColor } from '@/lib/utils';
