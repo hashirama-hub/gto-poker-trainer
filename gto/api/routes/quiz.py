@@ -13,6 +13,7 @@ from gto.api.schemas import (
     GTOHandInfo,
     GTOInfoRequest,
     GTOInfoResponse,
+    QuizAction,
     QuizHandResponse,
     QuizResultResponse,
     QuizStartRequest,
@@ -37,7 +38,7 @@ router = APIRouter(tags=["quiz"])
 
 def question_to_response(q: Question, hand_number: int, total: int) -> QuizHandResponse:
     actions = [
-        QuizActionInfo(
+        QuizAction(
             label=label,
             gto_pct=q.gto.get(label, 0.0) * 100,
             ev_bb=q.ev.get(label, 0.0),
