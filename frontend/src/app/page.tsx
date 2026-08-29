@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { cn } from '@/lib/utils';
-import { Play, Trophy, Brain, Zap, Shield, BarChart3, Settings, GitHub, ExternalLink } from 'lucide-react';
+import { Play, Trophy, Brain, Zap, Shield, BarChart3, Settings, GitBranch, ExternalLink } from 'lucide-react';
 
 const FEATURES = [
   {
@@ -78,7 +78,7 @@ export default function HomePage() {
                 rel="noopener noreferrer"
                 className="flex items-center gap-1 text-dark-500 dark:text-dark-400 hover:text-primary-600 dark:hover:text-primary-400"
               >
-                <GitHub className="w-5 h-5" />
+                <GitBranch className="w-5 h-5" />
               </a>
               <Button size="sm" asChild>
                 <Link href="/quiz"><Play className="w-4 h-4 mr-2" />Start Training</Link>
@@ -95,7 +95,7 @@ export default function HomePage() {
             <div className="text-center max-w-3xl mx-auto mb-16">
               <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-sm font-medium mb-6">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                Live solver backend • Models auto-saved to GitHub
+                Live solver backend • Models auto-saved to GitBranch
               </div>
               <h1 className="text-5xl lg:text-7xl font-bold text-dark-900 dark:text-dark-50 tracking-tight mb-6">
                 Deep GTO Training{' '}
@@ -213,7 +213,7 @@ export default function HomePage() {
               <div className="flex items-center gap-2"><Shield className="w-4 h-4" /><span>Net payoff (not gross)</span></div>
               <div className="flex items-center gap-2"><Brain className="w-4 h-4" /><span>Blocker-corrected EVs</span></div>
               <div className="flex items-center gap-2"><BarChart3 className="w-4 h-4" /><span>Jensen-bias-free exploitability</span></div>
-              <div className="flex items-center gap-2"><GitHub className="w-4 h-4" /><span>Open source on GitHub</span></div>
+              <div className="flex items-center gap-2"><GitBranch className="w-4 h-4" /><span>Open source on GitBranch</span></div>
             </div>
           </div>
         </section>
@@ -228,7 +228,7 @@ export default function HomePage() {
             </div>
             <div className="flex items-center gap-6 text-sm text-dark-500 dark:text-dark-400">
               <a href="https://github.com/hashirama-hub/gto-poker-trainer" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-primary-600">
-                <GitHub className="w-4 h-4" />
+                <GitBranch className="w-4 h-4" />
                 Source
               </a>
               <a href="https://github.com/hashirama-hub/gto-poker-trainer/issues" target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 hover:text-primary-600">
