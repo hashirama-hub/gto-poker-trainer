@@ -1,9 +1,35 @@
-.venv/
+# Python
 __pycache__/
-*.pyc
-*.egg-info/
+*.py[cod]
+*$py.class
+*.pkl
+.venv/
+venv/
+.env
 .pytest_cache/
-build/
-dist/
-solutions/
 *.log
+*.pid
+
+# Solutions (large model files)
+solutions/*.pkl
+
+# Node.js
+node_modules/
+.next/
+out/
+build/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
