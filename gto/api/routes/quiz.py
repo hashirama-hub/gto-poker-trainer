@@ -20,7 +20,7 @@ from gto.api.schemas import (
     QuizSummaryResponse,
 )
 from gto.db import get_session
-from gto.db.models import QuizHand, QuizSession
+from gto.db.models import QuizHand, QuizSession, User
 from gto.trainer.engine import (
     Question,
     make_flop_question,
