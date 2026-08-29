@@ -20,7 +20,7 @@ from gto.db import get_session
 from gto.db.models import ModelCheckpoint, TrainingRun
 from gto.trainer.models import full100_model, pushfold_model
 
-router = APIRouter(prefix="/gto", tags=["gto"])
+router = APIRouter(tags=["gto"])
 
 
 @router.post("/info", response_model=GTOInfoResponse)
