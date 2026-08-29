@@ -61,7 +61,11 @@ def score_choice(choice: str, ev: dict[str, float]) -> float:
 
 def _question(solver: Solver, key: tuple, player: int, hand: str, prompt: str) -> Question:
     node = solver.nodes[key]
-    ev = solver.ev_actions(key, player, hand, samples=250)
+    # Full tree (585 nodes) is much slower than push/fold (3 nodes);
+    # use fewer samples to keep quiz responsive.
+    is_full_tree = len(solver.nodes) > 100
+    samples = 30 if is_full_tree else 250
+    ev = solver.ev_actions(key, player, hand, samples=samples)
     strat = solver.strategy_for_hand(key, player, hand)
     gto = {a: max(0.0, min(1.0, strat.get(a, 0.0))) for a in ev}
     best = max(ev, key=ev.get)
