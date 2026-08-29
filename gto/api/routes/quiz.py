@@ -32,7 +32,7 @@ from gto.trainer.engine import (
 )
 from gto.trainer.models import flop_subgame, full100_model, icm_pushfold, pushfold_model
 
-router = APIRouter(prefix="/quiz", tags=["quiz"])
+router = APIRouter(tags=["quiz"])
 
 
 def question_to_response(q: Question, hand_number: int, total: int) -> QuizHandResponse:
