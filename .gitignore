@@ -11,7 +11,7 @@ venv/
 *.pid
 
 # Solutions (large model files)
-solutions/*.pkl
+# solutions/*.pkl
 
 # Node.js
 node_modules/
