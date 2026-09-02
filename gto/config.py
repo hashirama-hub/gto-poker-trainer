@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
 
     # Database
-    DATABASE_URL: str = "postgresql+asyncpg://gto:gto_dev_password@localhost:5432/gto_trainer"
+    DATABASE_URL: str = "postgresql+asyncpg://gto@localhost:5432/gto_trainer"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
