@@ -119,7 +119,7 @@ Boundaries:
   Drizzle ORM, better-sqlite3, Vitest.
 - Shared: `packages/core` (pure TypeScript domain), `packages/solver`,
   `packages/db`.
-- Monorepo: npm workspaces (or pnpm), single `tsconfig` base.
+- Monorepo: npm workspaces, single `tsconfig` base.
 - Runner: root `run.sh` with `verify = typecheck + test + build`.
 
 ## 6. Repository Structure
@@ -148,7 +148,7 @@ gto-trainer/
 - **HoleCards**: sorted unique pair.
 - **BoardCards**: 3 (flop) + 1 (turn) + 1 (river).
 - **Range**: weighted `Map<Hand, weight>` over 1326 combos; serializable/compressed.
-- **Positions (8-max)**: UTG, UTG1, MP, LJ, HJ, CO, BTN, SB, BB mapping to 8 seats.
+- **Positions (8-max)**: UTG, UTG1, MP, HJ, CO, BTN, SB, BB (8 seats).
 - **Stack tiers**: 10, 15, 20, 30, 40, 60, 100 bb (configurable set).
 - **Ante**: BBA = 1bb, posted by BB; pot computed accordingly.
 - **Action**: Fold | Check | Call | Bet(amount) | Raise(amount) | AllIn.
